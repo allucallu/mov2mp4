@@ -256,7 +256,6 @@ $('go').onclick = async () => {
     setStep(5); setBar(100); setPct('100%', '');
     setStatus('Selesai dalam ' + fmtT((Date.now() - t0) / 1000) + '.');
     $('dl').href = result[0].url;
-    $('log').textContent = result[1] || '';
     $('result').hidden = false;
   } catch (e) {
     setStatus((e && e.message) ? e.message : 'Terjadi kesalahan.', true);
