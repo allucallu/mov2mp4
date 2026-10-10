@@ -85,7 +85,7 @@ footer{text-align:center;font-size:12px;color:#5f6676;margin-top:24px}
 import { Client, handle_file } from 'https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js';
 
 // ====== PENGATURAN ======
-const SPACE = 'calluu/MovtoMp4';
+const SPACE = 'https://calluu-mov2mp4.hf.space';
 const HF_TOKEN = '';   // kosongkan jika Space PUBLIC (token di sini terlihat oleh siapa pun)
 // ========================
 
@@ -136,7 +136,7 @@ async function connect() {
     setStatus('');
   } else {
     $('go').textContent = 'Server tidak merespons';
-    setStatus('Gagal terhubung. Buka https://calluu-movtomp4.hf.space sekali untuk membangunkan Space, lalu muat ulang halaman ini.', true);
+    setStatus('Gagal terhubung.', true);
   }
 }
 connect();
