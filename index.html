@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#07080c">
+<title>iPhone ke Android</title>
+<style>
+:root{color-scheme:dark;--bg:#07080c;--card:rgba(255,255,255,.04);--line:rgba(255,255,255,.09);--ink:#e9ebf1;--mute:#8b93a5;--a1:#8b5cf6;--a2:#22d3ee;--bad:#fb7185;--ok:#34d399}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;min-height:100vh;color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:28px 16px 56px;
+background:radial-gradient(600px 320px at 15% -5%,rgba(139,92,246,.22),transparent 70%),radial-gradient(520px 300px at 95% 5%,rgba(34,211,238,.14),transparent 70%),var(--bg)}
+main{max-width:480px;margin:0 auto}
+h1{font-size:28px;letter-spacing:-.02em;margin:6px 0 10px}
+h1 b{background:linear-gradient(90deg,var(--a1),var(--a2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.joke{margin:0 0 20px;padding:12px 14px;border:1px solid var(--line);border-left:3px solid var(--a1);border-radius:12px;background:var(--card);color:var(--mute);font-style:italic;min-height:3.6em;cursor:pointer}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;margin-bottom:16px;backdrop-filter:blur(8px)}
+.drop{display:block;border:1.5px dashed rgba(255,255,255,.18);border-radius:14px;padding:26px 12px;text-align:center;cursor:pointer;color:var(--mute);word-break:break-all;transition:.2s}
+.drop:hover,.drop.over{border-color:var(--a2);color:var(--ink);background:rgba(34,211,238,.05)}
+.drop input{display:none}
+.field{margin-top:18px}
+.field>span{display:block;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);margin-bottom:7px}
+.seg{display:flex;gap:6px}
+.seg label{flex:1}
+.seg input{display:none}
+.seg span{display:block;text-align:center;padding:10px 0;border:1px solid var(--line);border-radius:11px;cursor:pointer;color:var(--mute);transition:.15s}
+.seg input:checked+span{color:#fff;border-color:transparent;background:linear-gradient(135deg,var(--a1),#6366f1);box-shadow:0 0 18px rgba(139,92,246,.4)}
+select{width:100%;padding:11px;border-radius:11px;border:1px solid var(--line);background:#0f1118;color:var(--ink);font:inherit}
+button#go{width:100%;margin-top:22px;padding:14px;border:0;border-radius:13px;color:#fff;font-family:inherit;font-size:16px;font-weight:600;cursor:pointer;background:linear-gradient(135deg,var(--a1),var(--a2));box-shadow:0 6px 28px rgba(139,92,246,.35)}
+button#go:disabled{opacity:.45;cursor:default;box-shadow:none}
+#status{margin-top:14px;font-size:14px;color:var(--mute);min-height:1.4em}
+#status.err{color:var(--bad)}
+.bar{height:6px;background:rgba(255,255,255,.07);border-radius:6px;overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--a1),var(--a2));box-shadow:0 0 12px var(--a2);transition:width .3s}
+#dl{display:block;text-align:center;padding:13px;border-radius:13px;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.5);color:var(--ok);text-decoration:none;font-weight:600}
+pre{white-space:pre-wrap;font-size:12px;color:var(--mute);margin:12px 0 0}
+footer{text-align:center;font-size:12px;color:#5f6676;margin-top:24px}
+</style>
+</head>
+<body>
+<main>
+  <h1>🎬 iPhone <b>→</b> Android</h1>
+  <p class="joke" id="joke" title="Ketuk untuk guyonan lain"></p>
+
+  <section class="card">
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept="video/*,.mov">
+      <span id="fname">Pilih atau seret video (.mov / .mp4)</span>
+    </label>
+
+    <div class="field">
+      <span>Resolusi</span>
+      <div class="seg">
+        <label><input type="radio" name="preset" value="1080p" checked><span>1080p</span></label>
+        <label><input type="radio" name="preset" value="720p"><span>720p</span></label>
+        <label><input type="radio" name="preset" value="Tetap 4K (H.264)"><span>4K</span></label>
+      </div>
+    </div>
+
+    <div class="field">
+      <span>Kecepatan encode</span>
+      <select id="speed">
+        <option value="fast" selected>fast (seimbang)</option>
+        <option value="veryfast">veryfast (cepat, file lebih besar)</option>
+        <option value="medium">medium (lambat, file lebih kecil)</option>
+      </select>
+    </div>
+
+    <button id="go" disabled>Menghubungkan ke server...</button>
+    <div id="status"></div>
+    <div class="bar"><i id="fill"></i></div>
+  </section>
+
+  <section class="card" id="result" hidden>
+    <a id="dl" href="#" target="_blank" rel="noopener">Unduh hasil MP4</a>
+    <pre id="log"></pre>
+  </section>
+
+  <footer>Portrait atau landscape, orientasinya dijaga. Hasil dihapus server sekitar 1 jam.</footer>
+</main>
+
+<script type="module">
+import { Client, handle_file } from 'https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js';
+
+// ====== PENGATURAN ======
+const SPACE = 'calluu/MovtoMp4';
+const HF_TOKEN = '';   // kosongkan jika Space PUBLIC (token di sini terlihat oleh siapa pun)
+// ========================
+
+const JOKES = [
+  'Nabung buat beli iPhone supaya nggak ribet.',
+  'Video 4K di HP yang kuat 1080p: ambisi besar, decoder kecil.',
+  'Android itu bebas memilih. Termasuk bebas memilih format yang tidak bisa diputar.',
+  'Lag itu bukan salah videomu. HP-mu cuma minta dimengerti.',
+  'Kirim lewat WhatsApp saja biar kualitasnya sekalian dikorbankan.',
+  'Kalau semua orang pakai iPhone, halaman ini menganggur. Sayang sekali, semoga tidak terjadi.',
+  'Tenang, ini bukan sulap. Cuma H.264 yang ditunggu HP-mu dari tadi.'
+];
+
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let jokeIdx = Math.floor(Math.random() * JOKES.length);
+const nextJoke = () => { jokeIdx = (jokeIdx + 1) % JOKES.length; $('joke').textContent = JOKES[jokeIdx]; };
+$('joke').textContent = JOKES[jokeIdx];
+$('joke').onclick = nextJoke;
+
+const setStatus = (t, err) => { $('status').textContent = t; $('status').className = err ? 'err' : ''; };
+const setBar = (p) => { $('fill').style.width = Math.max(0, Math.min(100, p)) + '%'; };
+
+function showName() {
+  const f = $('file').files[0];
+  $('fname').textContent = f ? f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)' : 'Pilih atau seret video (.mov / .mp4)';
+}
+$('file').onchange = showName;
+['dragenter', 'dragover'].forEach((ev) => $('drop').addEventListener(ev, (e) => { e.preventDefault(); $('drop').classList.add('over'); }));
+['dragleave', 'drop'].forEach((ev) => $('drop').addEventListener(ev, (e) => { e.preventDefault(); $('drop').classList.remove('over'); }));
+$('drop').addEventListener('drop', (e) => {
+  if (e.dataTransfer.files.length) { $('file').files = e.dataTransfer.files; showName(); }
+});
+
+let client = null;
+async function connect() {
+  for (let i = 0; i < 12 && !client; i++) {
+    try {
+      client = await Client.connect(SPACE, HF_TOKEN ? { hf_token: HF_TOKEN } : {});
+    } catch (e) {
+      setStatus('Server sedang bangun, tunggu sebentar... (' + (i + 1) + '/12)');
+      await sleep(8000);
+    }
+  }
+  if (client) {
+    $('go').disabled = false;
+    $('go').textContent = 'Konversi';
+    setStatus('');
+  } else {
+    $('go').textContent = 'Server tidak merespons';
+    setStatus('Gagal terhubung. Buka https://calluu-movtomp4.hf.space sekali untuk membangunkan Space, lalu muat ulang halaman ini.', true);
+  }
+}
+connect();
+
+$('go').onclick = async () => {
+  const f = $('file').files[0];
+  if (!f) { setStatus('Pilih video dulu.', true); return; }
+  const preset = document.querySelector('input[name=preset]:checked').value;
+  const speed = $('speed').value;
+
+  $('go').disabled = true;
+  $('result').hidden = true;
+  setBar(0);
+  setStatus('Mengunggah video, jangan tutup halaman ini...');
+  const timer = setInterval(nextJoke, 7000);
+
+  try {
+    const job = client.submit('/konversi', [handle_file(f), preset, speed]);
+    let result = null;
+    for await (const msg of job) {
+      if (msg.type === 'status') {
+        const pd = msg.progress_data && msg.progress_data[0];
+        if (msg.stage === 'error') throw new Error(msg.message || 'Konversi gagal.');
+        if (pd && pd.progress != null) {
+          setBar(pd.progress * 100);
+          setStatus(pd.desc || 'Mengonversi...');
+        } else if (msg.stage === 'pending') {
+          setStatus('Menunggu giliran di server...');
+        }
+      } else if (msg.type === 'data') {
+        result = msg.data;
+      }
+    }
+    if (!result || !result[0]) throw new Error('Server tidak mengembalikan file.');
+    setBar(100);
+    setStatus('Selesai.');
+    $('dl').href = result[0].url;
+    $('log').textContent = result[1] || '';
+    $('result').hidden = false;
+  } catch (e) {
+    setStatus((e && e.message) ? e.message : 'Terjadi kesalahan.', true);
+  } finally {
+    clearInterval(timer);
+    $('go').disabled = false;
+  }
+};
+</script>
+</body>
+</html>
