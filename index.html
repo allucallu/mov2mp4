@@ -37,6 +37,12 @@ button#go:disabled{opacity:.45;cursor:default;box-shadow:none}
 #dl{display:block;text-align:center;padding:13px;border-radius:13px;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.5);color:var(--ok);text-decoration:none;font-weight:600}
 pre{white-space:pre-wrap;font-size:12px;color:var(--mute);margin:12px 0 0}
 footer{text-align:center;font-size:12px;color:#5f6676;margin-top:24px}
+.steps{display:flex;gap:6px;margin:16px 0 0;padding:0}
+.steps li{flex:1;list-style:none;text-align:center;font-size:11px;padding:6px 0;border-radius:8px;border:1px solid var(--line);color:#5f6676}
+.steps li.on{color:#fff;border-color:var(--a2);box-shadow:0 0 10px rgba(34,211,238,.3)}
+.steps li.done{color:var(--ok);border-color:rgba(52,211,153,.5)}
+.pct{display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-top:8px;color:var(--mute)}
+.pct b{color:var(--ink);font-size:16px}
 </style>
 </head>
 <body>
@@ -69,8 +75,10 @@ footer{text-align:center;font-size:12px;color:#5f6676;margin-top:24px}
     </div>
 
     <button id="go" disabled>Menghubungkan ke server...</button>
-    <div id="status"></div>
+    <ul class="steps" id="steps" hidden><li>1 Unggah</li><li>2 Antre</li><li>3 Konversi</li><li>4 Selesai</li></ul>
     <div class="bar"><i id="fill"></i></div>
+    <div class="pct"><b id="pct"></b><span id="meta"></span></div>
+    <div id="status"></div>
   </section>
 
   <section class="card" id="result" hidden>
@@ -91,12 +99,11 @@ const HF_TOKEN = '';   // kosongkan jika Space PUBLIC (token di sini terlihat ol
 
 const JOKES = [
   'Nabung buat beli iPhone supaya nggak ribet.',
-  'Video 4K di HP yang kuat 1080p: ambisi besar, decoder kecil.',
-  'Android itu bebas memilih. Termasuk bebas memilih format yang tidak bisa diputar.',
+  'Video 4K di HP kentangp: ambisi besar, decoder kecil.',
+  'Beli iPhone deck',
   'Lag itu bukan salah videomu. HP-mu cuma minta dimengerti.',
   'Kirim lewat WhatsApp saja biar kualitasnya sekalian dikorbankan.',
   'Kalau semua orang pakai iPhone, halaman ini menganggur. Sayang sekali, semoga tidak terjadi.',
-  'Tenang, ini bukan sulap. Cuma H.264 yang ditunggu HP-mu dari tadi.'
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -121,11 +128,13 @@ $('drop').addEventListener('drop', (e) => {
 });
 
 let client = null;
+let lastErr = '';
 async function connect() {
   for (let i = 0; i < 12 && !client; i++) {
     try {
       client = await Client.connect(SPACE, HF_TOKEN ? { hf_token: HF_TOKEN } : {});
     } catch (e) {
+      lastErr = String((e && e.message) || e); console.error(e);
       setStatus('Server sedang bangun, tunggu sebentar... (' + (i + 1) + '/12)');
       await sleep(8000);
     }
@@ -136,10 +145,64 @@ async function connect() {
     setStatus('');
   } else {
     $('go').textContent = 'Server tidak merespons';
-    setStatus('Gagal terhubung.', true);
+    setStatus('Gagal terhubung. Buka https://calluu-mov2mp4.hf.space sekali untuk membangunkan Space, lalu muat ulang halaman ini. Detail: ' + lastErr, true);
   }
 }
 connect();
+
+const fmtMB = (b) => (b / 1048576).toFixed(1);
+const fmtT = (s) => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+const setPct = (t, m) => { $('pct').textContent = t || ''; $('meta').textContent = m || ''; };
+function setStep(n) {
+  $('steps').hidden = n === 0;
+  [...$('steps').children].forEach((li, i) => { li.className = i + 1 < n ? 'done' : (i + 1 === n ? 'on' : ''); });
+}
+
+let lock = null;
+async function keepAwake(on) {
+  try {
+    if (on && navigator.wakeLock) lock = await navigator.wakeLock.request('screen');
+    else if (lock) { await lock.release(); lock = null; }
+  } catch (e) { /* tidak didukung, abaikan */ }
+}
+const guard = (e) => { e.preventDefault(); e.returnValue = ''; };
+
+// Unggah dengan persen. Mengembalikan data file untuk Gradio, atau null jika endpoint tidak cocok.
+async function uploadFile(f) {
+  const root = (client.config && client.config.root) || (SPACE.startsWith('http') ? SPACE : '');
+  const urls = [root + '/gradio_api/upload', root + '/upload'];
+  const send = (url) => new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const t0 = Date.now();
+    xhr.open('POST', url);
+    if (HF_TOKEN) xhr.setRequestHeader('Authorization', 'Bearer ' + HF_TOKEN);
+    xhr.upload.onprogress = (e) => {
+      if (!e.lengthComputable) return;
+      const p = e.loaded / e.total * 100;
+      const speed = e.loaded / Math.max((Date.now() - t0) / 1000, 0.5);
+      setBar(p);
+      setPct(p.toFixed(0) + '%', fmtMB(e.loaded) + '/' + fmtMB(e.total) + ' MB | ' + fmtMB(speed) + ' MB/s | sisa ' + fmtT((e.total - e.loaded) / speed));
+    };
+    xhr.onload = () => {
+      if (xhr.status === 404) return reject(new Error('404'));
+      if (xhr.status < 200 || xhr.status >= 300) return reject(new Error('Unggah gagal (' + xhr.status + ')'));
+      try { resolve(JSON.parse(xhr.responseText)); } catch (e) { reject(e); }
+    };
+    xhr.onerror = () => reject(new Error('Koneksi terputus saat mengunggah.'));
+    const fd = new FormData();
+    fd.append('files', f);
+    xhr.send(fd);
+  });
+  for (const url of urls) {
+    try {
+      const res = await send(url);
+      return { path: res[0], orig_name: f.name, size: f.size, mime_type: f.type || 'video/quicktime', meta: { _type: 'gradio.FileData' } };
+    } catch (e) {
+      if (e.message !== '404') throw e;
+    }
+  }
+  return null;
+}
 
 $('go').onclick = async () => {
   const f = $('file').files[0];
@@ -149,30 +212,49 @@ $('go').onclick = async () => {
 
   $('go').disabled = true;
   $('result').hidden = true;
-  setBar(0);
-  setStatus('Mengunggah video, jangan tutup halaman ini...');
+  setBar(0); setPct('', ''); setStep(1);
+  setStatus('Mengunggah video. Jangan tutup halaman atau kunci layar.');
   const timer = setInterval(nextJoke, 7000);
+  window.addEventListener('beforeunload', guard);
+  keepAwake(true);
+  const t0 = Date.now();
 
   try {
-    const job = client.submit('/konversi', [handle_file(f), preset, speed]);
+    let fileData = null;
+    try { fileData = await uploadFile(f); } catch (e) { console.error(e); }
+    if (!fileData) { setStatus('Mengunggah dengan cara cadangan (tanpa persen)...'); fileData = handle_file(f); }
+
+    setStep(2); setBar(0); setPct('', '');
+    setStatus('Menunggu giliran di server...');
+    const job = client.submit('/konversi', [fileData, preset, speed]);
     let result = null;
+    let convStart = 0;
     for await (const msg of job) {
       if (msg.type === 'status') {
-        const pd = msg.progress_data && msg.progress_data[0];
         if (msg.stage === 'error') throw new Error(msg.message || 'Konversi gagal.');
+        const pd = msg.progress_data && msg.progress_data[0];
         if (pd && pd.progress != null) {
-          setBar(pd.progress * 100);
-          setStatus(pd.desc || 'Mengonversi...');
+          if (!convStart) convStart = Date.now();
+          setStep(3);
+          const p = pd.progress * 100;
+          const el = (Date.now() - convStart) / 1000;
+          setBar(p);
+          setPct(p.toFixed(0) + '%', 'berjalan ' + fmtT(el) + (p > 5 ? ' | sisa ' + fmtT(el * (100 - p) / p) : ''));
+          setStatus('Mengonversi video...');
         } else if (msg.stage === 'pending') {
-          setStatus('Menunggu giliran di server...');
+          setStep(2);
+          setStatus(msg.position != null ? 'Antre, posisi ' + (msg.position + 1) + '...' : 'Menunggu giliran di server...');
+        } else if (msg.stage === 'generating') {
+          setStep(3);
+          setStatus('Mengonversi video...');
         }
       } else if (msg.type === 'data') {
         result = msg.data;
       }
     }
-    if (!result || !result[0]) throw new Error('Server tidak mengembalikan file.');
-    setBar(100);
-    setStatus('Selesai.');
+    if (!result || !result[0]) throw new Error('Server tidak mengembalikan file. Cek tab Logs Space, atau coba video yang lebih pendek.');
+    setStep(5); setBar(100); setPct('100%', '');
+    setStatus('Selesai dalam ' + fmtT((Date.now() - t0) / 1000) + '.');
     $('dl').href = result[0].url;
     $('log').textContent = result[1] || '';
     $('result').hidden = false;
@@ -180,6 +262,8 @@ $('go').onclick = async () => {
     setStatus((e && e.message) ? e.message : 'Terjadi kesalahan.', true);
   } finally {
     clearInterval(timer);
+    window.removeEventListener('beforeunload', guard);
+    keepAwake(false);
     $('go').disabled = false;
   }
 };
